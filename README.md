@@ -275,8 +275,63 @@ export async function insertBeep(userId, content) {
 ```
 This function inserts a beep into the database and returns the inserted row (it's useful because the database automatically created an ID and a creation date on insertion).
 
+Create an `src/auth/auth0-client.js` file:
+```js
+import { ManagementClient } from "auth0";
+import camelcaseKeys from "camelcase-keys";
+
+const auth0ApiClient = new ManagementClient({
+  domain: process.env.AUTH0_DOMAIN,
+  clientId: process.env.AUTH0_CLIENT_ID,
+  clientSecret: process.env.AUTH0_CLIENT_SECRET,
+  scope: "read:users",
+});
+
+export class UsernameNotFound extends Error {}
+
+export async function getAuth0UsersByIds(ids) {
+  return await getNormalizedUsers({
+    q: ids.map((id) => `user_id:${id}`).join(" OR "),
+  });
+}
+
+export async function getAuth0UserByUsername(username) {
+  const matchingUsers = await getNormalizedUsers({
+    q: `username:${username}`,
+  }); // /!\ since the username parameter is provided by users, there's probably room for query injection here
+
+  if (matchingUsers.length === 0) {
+    throw new UsernameNotFound(username);
+  }
+
+  if (matchingUsers.length > 1) {
+    throw new Error("Unexpected state: usernames should be unique");
+  }
+
+  return matchingUsers[0];
+}
+
+/*
+ * Wrapper around Auth0's getUsers that:
+ *   1. normalizes the keys to camel case
+ *   2. only keeps the fields that we actually want to expose to API clients
+ */
+async function getNormalizedUsers(params) {
+  const fullUsers = await auth0ApiClient.getUsers(params);
+
+  const camelCaseFullUsers = camelcaseKeys(fullUsers);
+
+  return camelCaseFullUsers.map((fullUser) => ({
+    userId: fullUser.userId,
+    username: fullUser.username,
+    picture: fullUser.picture,
+  }));
+}
+```
+
 Create an `src/use-case/post-beep.js` file:
 ```js
+import { getAuth0UsersByIds } from "../auth/auth0-client.js";
 import { insertBeep } from "../db/insert-beep.js";
 
 const BEEP_MAX_LENGTH = 280;
@@ -290,7 +345,12 @@ export async function postBeep(userId, content) {
 
   const insertedBeep = await insertBeep(userId, content);
 
-  return insertedBeep;
+  const [user] = await getAuth0UsersByIds([userId])
+
+  return {
+    ...insertedBeep,
+    author: user
+    };
 }
 ```
 
@@ -313,6 +373,11 @@ app.post("/beep", async (req, res) => {
     }
   }
 });
+```
+
+In the `web` folder, create a `.env` file :
+```txt
+REACT_APP_API_URL=http://localhost:8080
 ```
 
 You can test it:

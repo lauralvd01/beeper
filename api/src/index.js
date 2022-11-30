@@ -4,6 +4,7 @@ import cors from "cors";
 import bodyParser from "body-parser";
 import { checkJwt } from "./auth/jwt-middleware.js";
 import { postBeep, BeepTooLongError } from "./use-case/post-beep.js";
+import { getUserHome } from "./use-case/get-user-home.js";
 
 const app = express();
 

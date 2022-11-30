@@ -6,7 +6,7 @@ export async function getHomeBeeps(userId) {
     SELECT 
       beep.id,
       author_id, 
-      created_at, 
+      created_at,
       content,
       like_count,
       liked.id IS NOT NULL AS "liked"
